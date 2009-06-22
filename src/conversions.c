@@ -14,9 +14,12 @@ JSException_to_PyErr(JSGlobalContextRef context, JSValueRef exception)
 }
 
 void
-set_JSException(JSValueRef *exception)
+set_JSException(PyJSContext *context, JSValueRef *exception)
 {
-
+    PyErr_Clear();
+    JSStringRef str = JSStringCreateWithUTF8CString("a python error occurred");
+    *exception = JSValueMakeString(context->context, str);
+    JSStringRelease(str);
 }
 
 /* returns a new PyObject or NULL */
@@ -25,6 +28,9 @@ JSString_to_PyString(JSStringRef jsstr)
 {
     size_t bufferlen = JSStringGetMaximumUTF8CStringSize(jsstr);
     char *buffer = (char *)malloc(bufferlen);
+    if (buffer == NULL) {
+        return PyErr_NoMemory();
+    }
     size_t len = JSStringGetUTF8CString(jsstr, buffer, bufferlen);
     PyObject *pystr = PyUnicode_DecodeUTF8(buffer, len-1, "strict");
     free(buffer);
@@ -75,6 +81,7 @@ PyString_to_JSString(PyObject *obj)
             return jsstr;
         }
     }
+    // TODO: else raise typeerror
     return NULL;
 }
 
@@ -144,6 +151,9 @@ PyObject_to_JSValue(PyObject *obj, PyJSContext *context)
             return jsobj;
         }
         return JSValueMakeNull(context->context);
+    }
+    if (PyBool_Check(obj)) {
+        return JSValueMakeBoolean(context->context, obj == Py_True);
     }
     if (PyNumber_Check(obj)) {
         double floatVal = PyFloat_AsDouble(obj);

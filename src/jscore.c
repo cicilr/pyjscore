@@ -563,4 +563,8 @@ initjscore(void)
     Py_INCREF(PyJSNull);
     if (PyModule_AddObject(m, "null", (PyObject *)PyJSNull) < 0)
         return;
+    if (PyModule_AddObject(m, "ALLOW_PRIVATE_ATTR", PyInt_FromLong(ALLOW_PRIVATE_ATTR)) < 0)
+        return;
+    if (PyModule_AddObject(m, "ALLOW_MODIFY_ATTR", PyInt_FromLong(ALLOW_MODIFY_ATTR)) < 0)
+        return;
 }

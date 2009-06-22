@@ -7,7 +7,7 @@
 PyObject *JSException_to_PyErr(JSGlobalContextRef, JSValueRef);
 
 /* sets an exception based on the current Python exception */
-void set_JSException(JSValueRef *exception);
+void set_JSException(PyJSContext *, JSValueRef *exception);
 
 /* returns a new PyObject or NULL */
 PyObject *JSString_to_PyString(JSStringRef);
