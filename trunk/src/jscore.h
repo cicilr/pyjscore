@@ -34,7 +34,6 @@ struct PyJSObjectIter {
 };
 
 extern PyObject *PyJSError;
-extern PyObject *PyJSTimeout;
 extern PyJSObject *PyJSNull;
 
 extern PyTypeObject jscore_PyJSObjectType;

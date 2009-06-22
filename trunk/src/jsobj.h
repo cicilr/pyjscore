@@ -3,6 +3,10 @@
 #include <Python.h>
 #include <JavaScriptCore/JavaScriptCore.h>
 
+#define ALLOW_PRIVATE_ATTR  1
+#define ALLOW_MODIFY_ATTR   2
+
+
 extern JSClassRef JSPyClass;
 
 typedef struct JSPrivateData {
