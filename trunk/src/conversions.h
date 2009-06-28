@@ -1,7 +1,11 @@
 #pragma once
 
 #include <Python.h>
+#ifdef __APPLE__
 #include <JavaScriptCore/JavaScriptCore.h>
+#else
+#include <JavaScriptCore/JavaScript.h>
+#endif
 
 /* sets an exception, returns null (calls JSValue_to_PyString) */
 PyObject *JSException_to_PyErr(JSGlobalContextRef, JSValueRef);

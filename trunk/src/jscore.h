@@ -1,7 +1,11 @@
 #pragma once
 
 #include <Python.h>
+#ifdef __APPLE__
 #include <JavaScriptCore/JavaScriptCore.h>
+#else
+#include <JavaScriptCore/JavaScript.h>
+#endif
 
 typedef struct PyJSContext PyJSContext;
 typedef struct PyJSObject PyJSObject;

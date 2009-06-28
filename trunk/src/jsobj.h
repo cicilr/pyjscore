@@ -1,7 +1,11 @@
 #pragma once
 
 #include <Python.h>
+#ifdef __APPLE__
 #include <JavaScriptCore/JavaScriptCore.h>
+#else
+#include <JavaScriptCore/JavaScript.h>
+#endif
 
 #define ALLOW_PRIVATE_ATTR  1
 #define ALLOW_MODIFY_ATTR   2
