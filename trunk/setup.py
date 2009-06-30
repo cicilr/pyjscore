@@ -4,6 +4,7 @@ pyjscore = Extension(
     "jscore", ["src/jscore.c", "src/conversions.c", "src/jsobj.c"],
     depends=['src/conversions.h', 'src/jscore.h', 'src/jsobj.h'],
     # define_macros=[('TRACE_MALLOC', None)],
+    undef_macros=['NDEBUG'], # enable assertions
     # extra_compile_args=['-O0'],
     extra_link_args=['-framework', 'JavaScriptCore'],
 )

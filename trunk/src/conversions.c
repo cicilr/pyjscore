@@ -2,24 +2,63 @@
 #include "jsobj.h"
 #include "conversions.h"
 
+#include <assert.h>
 
 PyObject *
-JSException_to_PyErr(JSGlobalContextRef context, JSValueRef exception)
+JSException_to_PyErr(PyJSContext *context, JSValueRef exception)
 {
-    PyObject *message = JSValue_to_PyString(context, exception);
-    /* XXX infinite loop oh noooooooooo */
-    PyErr_SetObject(PyJSError, message);
-    Py_DECREF(message);
+    PyObject *message = NULL;
+    PyObject *exc, *val, *tb;
+    PyJSError *pyjs_val;
+
+    if (JSValueIsObjectOfClass(context->context, exception, JSPyErrClass)) {
+        JSObjectRef exception_object = JSValueToObject(context->context, exception, NULL);
+        assert(exception_object);
+        JSPyErrPrivateData *data = JSObjectGetPrivate(exception_object);
+        exc = data->exc_type;
+        val = data->exc_value;
+        tb = data->exc_tb;
+        Py_INCREF(exc);
+        Py_INCREF(val);
+        Py_XINCREF(tb);
+        PyErr_Restore(exc, val, tb);
+    } else {
+        message = JSValue_to_PyString(context, exception);
+        assert(message); /* TODO: use a backup message if it fails */
+        
+        pyjs_val = (PyJSError *)PyObject_CallFunctionObjArgs(
+            (PyObject *)&jscore_PyJSErrorType,
+            message,
+            NULL);
+        assert(pyjs_val);
+        Py_DECREF(message);
+        JSValueProtect(context->context, exception);
+        pyjs_val->object = exception;
+        Py_INCREF(context);
+        pyjs_val->context = context;
+        PyErr_SetObject((PyObject *)&jscore_PyJSErrorType, (PyObject *)pyjs_val);
+        Py_DECREF((PyObject *)pyjs_val);
+    }
     return NULL;
 }
 
 void
 set_JSException(PyJSContext *context, JSValueRef *exception)
 {
-    PyErr_Clear();
-    JSStringRef str = JSStringCreateWithUTF8CString("a python error occurred");
-    *exception = JSValueMakeString(context->context, str);
-    JSStringRelease(str);
+    PyObject *exc, *val, *tb;
+    PyErr_Fetch(&exc, &val, &tb);
+    PyErr_NormalizeException(&exc, &val, &tb);
+    assert(val);
+    if (PyObject_TypeCheck(val, &jscore_PyJSErrorType)) {
+        PyJSError *pyjs_val = (PyJSError *)val;
+        assert(pyjs_val && pyjs_val->context == context);
+        *exception = pyjs_val->object;
+    } else {
+        *exception = PyJSPyErr_new(context, val, exc, tb);
+    }
+    Py_DECREF(exc);
+    Py_DECREF(val);
+    Py_XDECREF(tb);
 }
 
 /* returns a new PyObject or NULL */
@@ -39,12 +78,12 @@ JSString_to_PyString(JSStringRef jsstr)
 
 /* returns a new PyObject or NULL */
 PyObject *
-JSValue_to_PyString(JSGlobalContextRef context, JSValueRef value)
+JSValue_to_PyString(PyJSContext *context, JSValueRef value)
 {
     JSStringRef jsstr = NULL;
     JSValueRef exception = NULL;
     PyObject *pystr = NULL;
-    jsstr = JSValueToStringCopy(context, value, &exception);
+    jsstr = JSValueToStringCopy(context->context, value, &exception);
     if (!jsstr) {
         return JSException_to_PyErr(context, exception);
     }
@@ -122,11 +161,11 @@ JSValue_to_PyJSObject(JSValueRef value, PyJSObject *thisObject)
             return (PyObject *)PyJSNull;
         case kJSTypeString:
             /* TODO check exception */
-            return JSValue_to_PyString(context, value);
+            return JSValue_to_PyString(thisObject->context, value);
         default:
             jsobj = JSValueToObject(context, value, &exception);
             if (!jsobj) {
-                return JSException_to_PyErr(context, exception);
+                return JSException_to_PyErr(thisObject->context, exception);
             }
             if (JSValueIsObjectOfClass(context, jsobj, JSPyClass)) {
                 JSPrivateData *data = JSObjectGetPrivate(jsobj);
@@ -146,6 +185,7 @@ PyObject_to_JSValue(PyObject *obj, PyJSContext *context)
         return JSValueMakeUndefined(context->context);
     }
     if (PyObject_TypeCheck(obj, &jscore_PyJSObjectType)) {
+        assert(((PyJSObject *)obj)->context == context);
         JSObjectRef jsobj = ((PyJSObject *)obj)->object;
         if (jsobj) {
             return jsobj;

@@ -2,8 +2,6 @@
 #include "jsobj.h"
 #include "conversions.h"
 
-static JSClassDefinition JSPyClassDef;
-
 JSObjectRef
 PyJS_new(PyJSContext *context, PyObject *pyobj)
 {
@@ -24,22 +22,48 @@ PyJS_finalize(JSObjectRef object)
     free(data);
 }
 
+JSObjectRef
+PyJSPyErr_new(PyJSContext *context, PyObject *val, PyObject *type, PyObject *tb)
+{
+    JSPyErrPrivateData *data = malloc(sizeof(JSPyErrPrivateData));
+    data->context = context;
+    data->exc_value = val;
+    data->exc_type = type;
+    data->exc_tb = tb;
+    Py_INCREF(data->context);
+    Py_INCREF(data->exc_value);
+    Py_INCREF(data->exc_type);
+    Py_INCREF(data->exc_tb);
+    return JSObjectMake(context->context, JSPyErrClass, data);
+}
+
+static void
+PyJSPyErr_finalize(JSObjectRef object)
+{
+    JSPyErrPrivateData *data = JSObjectGetPrivate(object);
+    /* data->exc_value is freed by superclass finalizer (as .obj) */
+    Py_DECREF(data->exc_type);
+    Py_DECREF(data->exc_tb);
+}
+
 static long
 PyJS_GetFlags(PyObject *object)
 {
-    PyObject *flagsobj;
+    PyObject *flagsobj = NULL;
     long flags;
-    flagsobj = PyObject_GetAttrString(object, "__jsflags__");
     
-    if (flagsobj == NULL) {
-        PyErr_Clear();
-        return 0;
+    if (!(flagsobj = PyObject_GetAttrString(object, "__jsflags__"))) {
+        goto err;
     }
     if ((flags = PyInt_AsLong(flagsobj)) == -1) {
-        PyErr_Clear();
-        flags = 0;
+        goto err;
     }
-    Py_DECREF(flagsobj);
+    goto finally;
+  err:
+    PyErr_Clear();
+    flags = 0;
+  finally:
+    Py_XDECREF(flagsobj);
     return flags;
 }
 
@@ -205,28 +229,51 @@ DeleteProperty(JSContextRef ctx, JSObjectRef object, JSStringRef propertyName, J
 void
 init_jsobj(void)
 {
+    JSClassDefinition JSPyClassDef = {
+        0,                              /* version */
+        kJSClassAttributeNone,          /* attributes */
+        "PythonObject",                 /* className */
+        NULL,                           /* parentClass */
+        NULL,                           /* staticValues */
+        NULL,                           /* staticFunctions */
+        NULL, /* TODO implement*/       /* initialize */
+        PyJS_finalize,                  /* finalize */
+        HasProperty,                    /* hasProperty */
+        GetProperty,                    /* getProperty */
+        SetProperty,                    /* setProperty */
+        DeleteProperty,                 /* deleteProperty */
+        NULL, /* TODO implement*/       /* getPropertyNames */
+        CallAsFunction,                 /* callAsFunction */
+        NULL,                           /* hasInstance */
+        NULL, /* TODO implement*/       /* callAsConstructor */
+        NULL, /* TODO implement*/       /* convertToType */
+    };
+
     JSPyClass = JSClassCreate(&JSPyClassDef);
+    
+    JSClassDefinition JSPyErrClassDef = {
+        0,                              /* version */
+        kJSClassAttributeNone,          /* attributes */
+        "PythonException",              /* className */
+        JSPyClass,                      /* parentClass */
+        NULL,                           /* staticValues */
+        NULL,                           /* staticFunctions */
+        NULL,                           /* initialize */
+        PyJSPyErr_finalize,             /* finalize */
+        NULL,                           /* hasProperty */
+        NULL,                           /* getProperty */
+        NULL,                           /* setProperty */
+        NULL,                           /* deleteProperty */
+        NULL,                           /* getPropertyNames */
+        NULL,                           /* callAsFunction */
+        NULL,                           /* hasInstance */
+        NULL,                           /* callAsConstructor */
+        NULL,                           /* convertToType */
+    };
+    
+    JSPyErrClass = JSClassCreate(&JSPyErrClassDef);
 }
 
 JSClassRef JSPyClass = NULL;
-
-static JSClassDefinition JSPyClassDef = {
-    0,                              /* version */
-    kJSClassAttributeNone,          /* attributes */
-    "PythonObject",                 /* className */
-    NULL,                           /* parentClass */
-    NULL,                           /* staticValues */
-    NULL,                           /* staticFunctions */
-    NULL, /* TODO implement*/       /* initialize */
-    PyJS_finalize,                  /* finalize */
-    HasProperty,                    /* hasProperty */
-    GetProperty,                    /* getProperty */
-    SetProperty,                    /* setProperty */
-    DeleteProperty,                 /* deleteProperty */
-    NULL, /* TODO implement*/       /* getPropertyNames */
-    CallAsFunction,                 /* callAsFunction */
-    NULL,                           /* hasInstance */
-    NULL, /* TODO implement*/       /* callAsConstructor */
-    NULL, /* TODO implement*/       /* convertToType */
-};
+JSClassRef JSPyErrClass = NULL;
 
