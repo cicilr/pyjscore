@@ -10,6 +10,7 @@
 typedef struct PyJSContext PyJSContext;
 typedef struct PyJSObject PyJSObject;
 typedef struct PyJSObjectIter PyJSObjectIter;
+typedef struct PyJSError PyJSError;
 
 struct PyJSObject {
     PyObject_HEAD
@@ -37,11 +38,17 @@ struct PyJSObjectIter {
     size_t                  index;
 };
 
-extern PyObject *PyJSError;
+struct PyJSError {
+    PyBaseExceptionObject   exception;
+    JSValueRef              object;         /* retain */
+    PyJSContext             *context;       /* retain */
+};
+
 extern PyJSObject *PyJSNull;
 
 extern PyTypeObject jscore_PyJSObjectType;
 extern PyTypeObject jscore_PyJSObjectIterType;
+extern PyTypeObject jscore_PyJSErrorType;
 
 PyObject *PyJSObject_new(JSObjectRef object, PyJSObject *thisObject, PyJSContext *context);
 

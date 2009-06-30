@@ -6,7 +6,6 @@
 #include "jsobj.h"
 #include "conversions.h"
 
-PyObject *PyJSError;
 PyJSObject *PyJSNull;
 
 static PyObject *PyJSContext_getGlobalObject(PyJSContext *);
@@ -70,7 +69,7 @@ PyJSObject_getitem(PyJSObject *self, PyObject *key)
             value = JSObjectGetPropertyAtIndex(self->context->context, self->object,
                 ikey, &exception);
             if (!value) {
-                return JSException_to_PyErr(self->context->context, exception);
+                return JSException_to_PyErr(self->context, exception);
             }
         }
     }
@@ -81,7 +80,7 @@ PyJSObject_getitem(PyJSObject *self, PyObject *key)
                 jsstr, &exception);
             JSStringRelease(jsstr);
             if (!value) {
-                return JSException_to_PyErr(self->context->context, exception);
+                return JSException_to_PyErr(self->context, exception);
             }
         } else {
             return NULL;
@@ -111,7 +110,7 @@ PyJSObject_setitem(PyJSObject *self, PyObject *key, PyObject *value)
             JSObjectSetPropertyAtIndex(self->context->context, self->object,
                 ikey, jsvalue, &exception);
             if (exception) {
-                JSException_to_PyErr(self->context->context, exception);
+                JSException_to_PyErr(self->context, exception);
                 return -1;
             }
             return 0;
@@ -129,7 +128,7 @@ PyJSObject_setitem(PyJSObject *self, PyObject *key, PyObject *value)
         }
         JSStringRelease(jsstr);
         if (!rv && exception) {
-            JSException_to_PyErr(self->context->context, exception);
+            JSException_to_PyErr(self->context, exception);
             return -1;
         }
         return 0;
@@ -159,7 +158,7 @@ PyJSObject_getattro(PyJSObject *self, PyObject *key)
                  self->object, jsstr, &exception);
             JSStringRelease(jsstr);
             if (!value) {
-                return JSException_to_PyErr(self->context->context, exception);
+                return JSException_to_PyErr(self->context, exception);
             }
             return JSValue_to_PyJSObject(value, self);
         } else {
@@ -256,7 +255,7 @@ PyJSObject_call(PyJSObject *self, PyObject *args, PyObject *kwargs)
         result = JSValue_to_PyJSObject(value, &self->context->dummy);
         return result;
     } else {
-        JSException_to_PyErr(self->context->context, exception);
+        JSException_to_PyErr(self->context, exception);
     }
     return result;
   argErr:
@@ -404,11 +403,11 @@ static PyObject *
 PyJSContext_new(PyTypeObject *type, PyObject *args, PyObject *kwds)
 {
     PyJSContext *self;
-    self = (PyJSContext *)type->tp_alloc(type, 0);
+    self = PyObject_New(PyJSContext, type);
     if (self != NULL) {
         self->context = JSGlobalContextCreate(NULL);
         if (self->context == NULL) {
-            PyErr_SetString(PyJSError, "Context creation failed!");
+            PyErr_SetString((PyObject *)&jscore_PyJSErrorType, "Context creation failed!");
             self = NULL;
         }
         self->dummy.object = NULL;
@@ -455,7 +454,7 @@ PyJSContext_evaluate(PyJSContext *self, PyObject *arg)
     if (value) {
         return JSValue_to_PyJSObject(value, &self->dummy);
     } else {
-        return JSException_to_PyErr(self->context, exception);
+        return JSException_to_PyErr(self, exception);
     }
 }
 
@@ -525,6 +524,80 @@ PyTypeObject jscore_PyJSContextType = {
     PyJSContext_new,                /* tp_new */
 };
 
+/******************************************************************************/
+/******************************************************************************/
+/******************************************************************************/
+
+static int
+PyJSError_init(PyJSError *self, PyObject *args, PyObject *kwds)
+{
+#ifdef TRACE_MALLOC
+    printf("INIT  <error>\n");
+#endif
+    if (jscore_PyJSErrorType.tp_base->tp_init((PyObject *)self, args, kwds) < 0) {
+        return -1;
+    }
+    self->object = NULL;
+    self->context = NULL;
+    return 0;
+}
+
+static void
+PyJSError_dealloc(PyJSError *self)
+{
+#ifdef TRACE_MALLOC
+    printf("FREE  <error>\n");
+#endif
+    if (self->object) {
+        JSValueUnprotect(self->context->context, self->object);
+    }
+    Py_XDECREF(self->context);
+    self->exception.ob_type->tp_free((PyObject*)self);
+}
+
+PyTypeObject jscore_PyJSErrorType = {
+    PyObject_HEAD_INIT(NULL)
+    0,                              /* ob_size */
+    "pyjscore.error",               /* tp_name */
+    sizeof(PyJSError),              /* tp_basicsize */
+    0,                              /* tp_itemsize */
+    (destructor)PyJSError_dealloc,  /* tp_dealloc */
+    0,                              /* tp_print */
+    0,                              /* tp_getattr */
+    0,                              /* tp_setattr */
+    0,                              /* tp_compare */
+    0,                              /* tp_repr */
+    0,                              /* tp_as_number */
+    0,                              /* tp_as_sequence */
+    0,                              /* tp_as_mapping */
+    0,                              /* tp_hash */
+    0,                              /* tp_call */
+    0,                              /* tp_str */
+    0,                              /* tp_getattro */
+    0,                              /* tp_setattro */
+    0,                              /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,             /* tp_flags */
+    "A wrapper for JavaScript errors.", /* tp_doc */
+    0,                              /* tp_traverse */
+    0,                              /* tp_clear */
+    0,                              /* tp_richcompare */
+    0,                              /* tp_weaklistoffset */
+    0,                              /* tp_iter */
+    0,                              /* tp_iternext */
+    0,                              /* tp_methods */
+    0,                              /* tp_members */
+    0,                              /* tp_getset */
+    0,                              /* tp_base */
+    0,                              /* tp_dict */
+    0,                              /* tp_descr_get */
+    0,                              /* tp_descr_set */
+    0,                              /* tp_dictoffset */
+    (initproc)PyJSError_init,       /* tp_init */
+    0,                              /* tp_alloc */
+    0,                              /* tp_new */
+};
+
+
 PyMODINIT_FUNC
 initjscore(void)
 {
@@ -545,8 +618,8 @@ initjscore(void)
     if (PyType_Ready(&jscore_PyJSObjectIterType) < 0)
         return;
     
-    PyJSError = PyErr_NewException("jscore.error", NULL, NULL);
-    if (PyJSError == NULL)
+    jscore_PyJSErrorType.tp_base = (PyTypeObject *)PyExc_Exception;
+    if (PyType_Ready(&jscore_PyJSErrorType) < 0)
         return;
     
     PyJSNull = (PyJSObject *)PyJSObject_new(NULL, NULL, NULL);
@@ -557,8 +630,8 @@ initjscore(void)
     Py_INCREF(&jscore_PyJSContextType);
     if (PyModule_AddObject(m, "Context", (PyObject *)&jscore_PyJSContextType) < 0)
         return;
-    Py_INCREF(PyJSError);
-    if (PyModule_AddObject(m, "error", PyJSError) < 0)
+    Py_INCREF(&jscore_PyJSErrorType);
+    if (PyModule_AddObject(m, "error", (PyObject *)&jscore_PyJSErrorType) < 0)
         return;
     Py_INCREF(PyJSNull);
     if (PyModule_AddObject(m, "null", (PyObject *)PyJSNull) < 0)

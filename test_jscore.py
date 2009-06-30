@@ -19,6 +19,7 @@ class TestBasic(unittest.TestCase):
         self.assertEqual(g.eval('true'), True)
         self.assertEqual(g.eval('false'), False)
         self.assertEqual(g.eval('null'), jscore.null)
+        self.assert_(g.eval('null') is jscore.null)
         self.assertEqual(g.eval('undefined'), None)
 
         self.assertEqual(repr(g.eval('Infinity')), 'inf')
@@ -139,6 +140,39 @@ class TestPyProxyObjects(unittest.TestCase):
         g.eval('o._p = 1')
         self.assert_(g.eval('o._p == 1'))
         self.assertEqual(o._p, 1)
+
+class TestExceptions(unittest.TestCase):
+    class MyTestEx(Exception): pass
+    @staticmethod
+    def thrower(): raise TestExceptions.MyTestEx('foo')
+
+    def testPythonThrowThroughJS(self):
+        g = jscore.Context().globalObject
+        g.thrower = self.thrower
+        g.eval('function caller() { thrower(); }')
+        self.assertRaises(self.MyTestEx, lambda: g.caller())
+        self.assertRaises(self.MyTestEx, lambda: g.eval('caller()'))
+
+    def testJSThrowThroughPython(self):
+        g = jscore.Context().globalObject
+        def caller(callable):
+            callable()
+        g.caller = caller
+        g.eval('function thrower() { throw ReferenceError("foo"); }')
+        g.eval('function catcher() { try { caller(thrower) } catch (e) { return e; }}')
+        self.assertEqual(g.eval('catcher().message'), 'foo')
+        self.assertEqual(g.eval('catcher() instanceof ReferenceError'), True)
         
+
+    def testPythonThrowJSCatch(self):
+        g = jscore.Context().globalObject
+        g.thrower = self.thrower
+        g.eval('function catcher() { try { thrower(); } catch (e) { return e; }}')
+        self.assert_(isinstance(g.catcher(), self.MyTestEx))
+        self.assertEqual(g.catcher().message, 'foo')
+        self.assertEqual(g.eval('catcher().toString()'), '[object PythonException]')
+
+
+
 if __name__ == '__main__':
     unittest.main()
